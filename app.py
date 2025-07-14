@@ -81,7 +81,7 @@ if not filtered.empty:
 
     if selected_book and 'Description' in filtered.columns:
         desc = filtered.loc[filtered['Name of Book'].str.strip() == selected_book.strip(), 'Description'].values
-        st.markdown(f"### 📝 Description for *{selected_book}*")
+        st.markdown(f"### 📝 *{selected_book}*")
         st.write(desc[0] if len(desc) > 0 and pd.notna(desc[0]) else "No description available.")
 else:
     if query:
