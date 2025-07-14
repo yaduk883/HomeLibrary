@@ -1,96 +1,73 @@
 import streamlit as st
 import pandas as pd
-import os
+import requests
+from io import StringIO
 
-BOOK_FILE = "Book LIST Y"
-ADMIN_USERNAME = "yaduk883"
-ADMIN_PASSWORD = "Animas@123"
+# ------------------------------------------
+# Google Sheet CSV Link
+# ------------------------------------------
+GOOGLE_SHEET_CSV = "https://docs.google.com/spreadsheets/d/10foSwd8HyCbltVFYT5HpuiiQMk9FFIkn-aVhH93_A78/gviz/tq?tqx=out:csv"
 
-COLUMNS = ['Name of Book', 'Author', 'Language', 'N.o of Copies', 'Date',
-           'BAR CODE', 'Available/Not', 'Checked Out By', 'Description']
+@st.cache_data(ttl=600)
+def load_data():
+    try:
+        response = requests.get(GOOGLE_SHEET_CSV)
+        df = pd.read_csv(StringIO(response.text))
+        df.columns = df.columns.str.strip()
+        df = df[df['Name of Book'].notna()]
+        return df
+    except Exception as e:
+        st.error(f"⚠️ Failed to load book data: {e}")
+        return pd.DataFrame()
 
-# Load or initialize the CSV
-def load_books():
-    if not os.path.exists(BOOK_FILE):
-        pd.DataFrame(columns=COLUMNS).to_csv(BOOK_FILE, index=False)
-    df = pd.read_csv(BOOK_FILE)
-    df.columns = df.columns.str.strip()
-    return df
-
-def add_book(entry):
-    df = load_books()
-    df = pd.concat([df, pd.DataFrame([entry])], ignore_index=True)
-    df.to_csv(BOOK_FILE, index=False)
-
-st.set_page_config("📚 Yadu's Library", layout="wide")
+# ------------------------------------------
+# Streamlit App
+# ------------------------------------------
+st.set_page_config(page_title="📚 Yadu's Book Library", layout="wide")
 st.title("📚 Yadu's Book Library")
 
-books = load_books()
+book_data = load_data()
 
-# --- Admin Sidebar ---
-with st.sidebar:
-    st.header("🔐 Admin Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    login = st.button("Login")
+# Columns to display
+display_columns = [
+    'Name of Book', 'Author', 'Language', 'N.o of Copies',
+    'Date', 'BAR CODE', 'Available/Not', 'Checked Out By'
+]
 
-is_admin = login and username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+# Remove unwanted columns like "Sl No"
+if 'Sl No' in book_data.columns:
+    book_data.drop(columns=['Sl No'], inplace=True)
 
-if is_admin:
-    st.success("✅ Logged in as Admin")
-    st.subheader("➕ Add a New Book")
+# ------------------------------------------
+# Live Substring Search (NOT fuzzy)
+# ------------------------------------------
+query = st.text_input("🔍 Search by Book Name or Author:", placeholder="Type to search...")
 
-    with st.form("book_form"):
-        name = st.text_input("Name of Book")
-        author = st.text_input("Author")
-        language = st.text_input("Language")
-        copies = st.text_input("Number of Copies")
-        date = st.date_input("Date")
-        barcode = st.text_input("BAR CODE")
-        available = st.selectbox("Available/Not", ["Available", "Not Available"])
-        checked_out = st.text_input("Checked Out By")
-        description = st.text_area("Description")
-
-        submit = st.form_submit_button("Add Book")
-
-        if submit:
-            if name and author:
-                entry = {
-                    'Name of Book': name,
-                    'Author': author,
-                    'Language': language,
-                    'N.o of Copies': copies,
-                    'Date': date,
-                    'BAR CODE': barcode,
-                    'Available/Not': available,
-                    'Checked Out By': checked_out,
-                    'Description': description
-                }
-                add_book(entry)
-                st.success(f"✅ Book '{name}' added successfully.")
-            else:
-                st.error("❌ Name and Author are required.")
-
-# --- User Search ---
-st.subheader("🔍 Search Library")
-search = st.text_input("Enter book name or author:")
-
-if search:
-    search_lower = search.lower()
-    results = books[
-        books['Name of Book'].str.lower().str.contains(search_lower, na=False) |
-        books['Author'].str.lower().str.contains(search_lower, na=False)
+if query:
+    query_lower = query.lower()
+    filtered = book_data[
+        book_data['Name of Book'].str.lower().str.contains(query_lower, na=False) |
+        book_data['Author'].str.lower().str.contains(query_lower, na=False)
     ]
-
-    if not results.empty:
-        st.write(f"📚 Found {len(results)} match(es):")
-        st.dataframe(results[COLUMNS[:-1]])  # exclude Description
-        selected = st.selectbox("Select a book to see description", results['Name of Book'].dropna().unique())
-        desc = results.loc[results['Name of Book'] == selected, 'Description'].values
-        st.markdown("### 📝 Description")
-        st.write(desc[0] if len(desc) > 0 and pd.notna(desc[0]) else "No description available.")
-    else:
-        st.warning("🔍 No results found.")
 else:
-    st.info("Type a book name or author to search.")
+    filtered = pd.DataFrame()
 
+# ------------------------------------------
+# Display Results
+# ------------------------------------------
+if not filtered.empty:
+    st.success(f"🔎 {len(filtered)} match(es) found.")
+    show_cols = [col for col in display_columns if col in filtered.columns]
+    st.dataframe(filtered[show_cols], use_container_width=True)
+
+    selected_book = st.selectbox("📘 Select a book to view description", filtered['Name of Book'].dropna().unique())
+
+    if selected_book and 'Description' in filtered.columns:
+        desc = filtered.loc[filtered['Name of Book'].str.strip() == selected_book.strip(), 'Description'].values
+        st.markdown(f"### 📝 Description for *{selected_book}*")
+        st.write(desc[0] if len(desc) > 0 and pd.notna(desc[0]) else "No description available.")
+else:
+    if query:
+        st.warning("❌ No matches found.")
+    else:
+        st.info("Start typing above to search by Book Name or Author.")
