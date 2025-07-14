@@ -3,76 +3,59 @@ import pandas as pd
 import requests
 from io import StringIO
 
-# ------------------------------------------
-# Google Sheets CSV links (Make sure "Anyone with the link" can view)
-# ------------------------------------------
-GOOGLE_SHEET_CSV_MAIN = "https://docs.google.com/spreadsheets/d/10foSwd8HyCbltVFYT5HpuiiQMk9FFIkn-aVhH93_A78/gviz/tq?tqx=out:csv"
-GOOGLE_SHEET_CSV_DETAILS = "https://docs.google.com/spreadsheets/d/10foSwd8HyCbltVFYT5HpuiiQMk9FFIkn-aVhH93_A78/gviz/tq?gid=0&format=csv"  # Replace gid=0 with the actual sheet/tab ID for details
+# Your published Google Sheet (CSV export link)
+GOOGLE_SHEET_CSV = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/gviz/tq?tqx=out:csv"
 
-# ------------------------------------------
-# Load Data with Caching
-# ------------------------------------------
-@st.cache_data
+# Refresh button
+refresh = st.button("🔄 Refresh Data")
+
+@st.cache_data(ttl=600)
 def load_data():
     try:
-        # Load main book list
-        main_response = requests.get(GOOGLE_SHEET_CSV_MAIN)
-        book_data = pd.read_csv(StringIO(main_response.text))
-        book_data.columns = book_data.columns.str.strip()
-
-        # Load book details
-        details_response = requests.get(GOOGLE_SHEET_CSV_DETAILS)
-        book_details = pd.read_csv(StringIO(details_response.text))
-        book_details.columns = book_details.columns.str.strip()
-
-        return book_data, book_details
-
+        response = requests.get(GOOGLE_SHEET_CSV)
+        data = pd.read_csv(StringIO(response.text))
+        data.columns = data.columns.str.strip()
+        return data
     except Exception as e:
-        st.error(f"⚠️ Failed to load book data: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+        st.error(f"❌ Error loading data: {e}")
+        return pd.DataFrame()
 
-# ------------------------------------------
-# Main App
-# ------------------------------------------
-st.set_page_config(page_title="📚 Yadu's Book Library", layout="wide")
+if refresh:
+    st.cache_data.clear()
+
+data = load_data()
+
+# -----------------------------
+# UI Starts Here
+# -----------------------------
+st.set_page_config(page_title="📚 Book Library", layout="wide")
 st.title("📚 Yadu's Book Library")
 
-# Load data
-book_data, book_details = load_data()
-
-# Debug: Show column names (optional)
-# st.write("Book Data Columns:", book_data.columns.tolist())
-# st.write("Book Details Columns:", book_details.columns.tolist())
-
-# Search bar
 query = st.text_input("🔍 Search for a book:")
 
-if not book_data.empty and query:
-    # Filter matching rows
-    results = book_data[
-        book_data.apply(lambda row: row.astype(str).str.contains(query, case=False).any(), axis=1)
-    ]
+if not data.empty and query:
+    # Filter results by any column
+    results = data[data.apply(lambda row: row.astype(str).str.contains(query, case=False).any(), axis=1)]
+
     st.write(f"🔎 Found {len(results)} result(s)")
-    st.dataframe(results)
 
     if not results.empty:
-        # Make sure column exists
-        name_col = "Name of Book"
-        if name_col in results.columns:
-            selected_book = st.selectbox("📘 Select a book to view details", results[name_col].dropna().unique())
+        # Hide Description column in main table
+        display_columns = [col for col in results.columns if 'description' not in col.lower()]
+        st.dataframe(results[display_columns])
 
-            if selected_book:
-                # Try to display description from details sheet
-                if name_col in book_details.columns and 'Description' in book_details.columns:
-                    match = book_details[
-                        book_details[name_col].str.strip() == selected_book.strip()
-                    ]['Description'].values
-
-                    st.markdown(f"### 📝 Description for *{selected_book}*")
-                    st.write(match[0] if len(match) > 0 else "No description available.")
-                else:
-                    st.warning("⚠️ Could not find description column in book details.")
-        else:
-            st.warning("⚠️ 'Name of Book' column not found in search results.")
+        # Show each book's description below
+        for _, row in results.iterrows():
+            book_name = row.get('Name of Book', 'Unknown')
+            description = row.get('Description', 'No description available.')
+            st.markdown(f"### 📝 Description for *{book_name}*")
+            st.write(description)
+            st.markdown("---")
+    else:
+        st.warning("No matching books found.")
+elif query:
+    st.warning("No results found.")
+elif not data.empty:
+    st.info("Type in the search box above to search through the books.")
 else:
-    st.info("Type in the search box above to find books.")
+    st.error("❌ Failed to load book data.")
