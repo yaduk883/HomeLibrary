@@ -3,59 +3,68 @@ import pandas as pd
 import requests
 from io import StringIO
 
-# Your published Google Sheet (CSV export link)
-GOOGLE_SHEET_CSV = "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/gviz/tq?tqx=out:csv"
+# ------------------------------------------
+# Google Sheet CSV link (only one sheet)
+# ------------------------------------------
+GOOGLE_SHEET_CSV = "https://docs.google.com/spreadsheets/d/10foSwd8HyCbltVFYT5HpuiiQMk9FFIkn-aVhH93_A78/gviz/tq?tqx=out:csv"
 
-# Refresh button
-refresh = st.button("🔄 Refresh Data")
-
+# ------------------------------------------
+# Load Data with Caching
+# ------------------------------------------
 @st.cache_data(ttl=600)
 def load_data():
     try:
         response = requests.get(GOOGLE_SHEET_CSV)
-        data = pd.read_csv(StringIO(response.text))
-        data.columns = data.columns.str.strip()
-        return data
+        df = pd.read_csv(StringIO(response.text))
+        df.columns = df.columns.str.strip()  # Clean column names
+        return df
     except Exception as e:
-        st.error(f"❌ Error loading data: {e}")
+        st.error(f"⚠️ Failed to load book data: {e}")
         return pd.DataFrame()
 
-if refresh:
-    st.cache_data.clear()
-
-data = load_data()
-
-# -----------------------------
-# UI Starts Here
-# -----------------------------
-st.set_page_config(page_title="📚 Book Library", layout="wide")
+# ------------------------------------------
+# Streamlit App
+# ------------------------------------------
+st.set_page_config(page_title="📚 Yadu's Book Library", layout="wide")
 st.title("📚 Yadu's Book Library")
 
+book_data = load_data()
+
+# ------------------------------------------
+# Search Interface
+# ------------------------------------------
 query = st.text_input("🔍 Search for a book:")
 
-if not data.empty and query:
-    # Filter results by any column
-    results = data[data.apply(lambda row: row.astype(str).str.contains(query, case=False).any(), axis=1)]
+if not book_data.empty and query:
+    # Remove "Sl No" column if exists
+    if 'Sl No' in book_data.columns:
+        book_data = book_data.drop(columns=['Sl No'])
 
-    st.write(f"🔎 Found {len(results)} result(s)")
+    # Filter rows that match or closely match
+    results = book_data[
+        book_data.apply(lambda row: row.astype(str).str.contains(query, case=False, na=False), axis=1)
+    ]
 
     if not results.empty:
-        # Hide Description column in main table
-        display_columns = [col for col in results.columns if 'description' not in col.lower()]
-        st.dataframe(results[display_columns])
+        st.write(f"🔎 Found {len(results)} matching result(s)")
 
-        # Show each book's description below
-        for _, row in results.iterrows():
-            book_name = row.get('Name of Book', 'Unknown')
-            description = row.get('Description', 'No description available.')
-            st.markdown(f"### 📝 Description for *{book_name}*")
-            st.write(description)
-            st.markdown("---")
+        # Don't show Description column in table
+        columns_to_show = [col for col in results.columns if col.lower() != 'description']
+        st.dataframe(results[columns_to_show])
+
+        # Show description separately
+        name_col = "Name of Book"
+        if name_col in results.columns:
+            selected_book = st.selectbox("📘 Select a book to view description", results[name_col].dropna().unique())
+            if selected_book:
+                match = results[results[name_col].str.strip() == selected_book.strip()]
+                if not match.empty and 'Description' in match.columns:
+                    description = match.iloc[0]['Description']
+                    st.markdown(f"### 📝 Description for *{selected_book}*")
+                    st.write(description if pd.notna(description) and str(description).strip() else "No description available.")
+                else:
+                    st.warning("⚠️ Description not found.")
     else:
-        st.warning("No matching books found.")
-elif query:
-    st.warning("No results found.")
-elif not data.empty:
-    st.info("Type in the search box above to search through the books.")
+        st.warning("❌ No matching results found.")
 else:
-    st.error("❌ Failed to load book data.")
+    st.info("Start typing above to search your library.")
