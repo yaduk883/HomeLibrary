@@ -2,17 +2,13 @@ import streamlit as st
 import pandas as pd
 import os
 
+# ----------------- CONFIG -----------------
 BOOK_FILE = "books.csv"
 ADMIN_USERNAME = "yaduk883"
 ADMIN_PASSWORD = "Animas@123"
-
-# Columns for display
 DISPLAY_COLUMNS = ['Name of Book', 'Author', 'Language', 'N.o of Copies', 'Date', 'BAR CODE', 'Available/Not', 'Checked Out By']
 
-# -------------------------------
-# Load or Create Data
-# -------------------------------
-@st.cache_data(ttl=600)
+# ----------------- HELPERS -----------------
 def load_data():
     if os.path.exists(BOOK_FILE):
         df = pd.read_csv(BOOK_FILE)
@@ -23,47 +19,44 @@ def load_data():
     return df
 
 def save_book(row):
-    df = pd.read_csv(BOOK_FILE)
+    df = load_data()
     df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     df.to_csv(BOOK_FILE, index=False)
 
-# -------------------------------
-# App Start
-# -------------------------------
+# ----------------- STREAMLIT UI -----------------
 st.set_page_config("📚 Yadu's Library", layout="wide")
 st.title("📚 Yadu's Book Library")
 
-book_data = load_data()
-
-# -------------------------------
-# Admin Section
-# -------------------------------
+# ----------------- LOGIN SIDEBAR -----------------
 with st.sidebar:
     st.header("🔐 Admin Login")
-    with st.form("admin_login"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
+    username = st.text_input("Username", key="username")
+    password = st.text_input("Password", type="password", key="password")
+    login = st.button("Login", key="login_btn")
 
-    is_admin = (username == ADMIN_USERNAME and password == ADMIN_PASSWORD)
+# ----------------- BOOK DATA -----------------
+book_data = load_data()
+
+# ----------------- ADMIN SECTION -----------------
+is_admin = username == ADMIN_USERNAME and password == ADMIN_PASSWORD and login
 
 if is_admin:
-    st.success("Logged in as Admin ✅")
+    st.success("✅ Logged in as Admin")
 
-    st.header("➕ Add New Book")
+    st.subheader("➕ Add New Book")
     with st.form("add_book"):
         name = st.text_input("Name of Book")
         author = st.text_input("Author")
         lang = st.text_input("Language")
-        copies = st.text_input("N.o of Copies")
+        copies = st.text_input("No. of Copies")
         date = st.date_input("Date")
         barcode = st.text_input("BAR CODE")
         available = st.selectbox("Available/Not", ["Available", "Not Available"])
         checked_out = st.text_input("Checked Out By")
         description = st.text_area("Description")
 
-        submit_book = st.form_submit_button("➕ Add Book")
-        if submit_book:
+        submit = st.form_submit_button("➕ Add Book")
+        if submit:
             if name and author:
                 row = {
                     'Name of Book': name,
@@ -79,40 +72,28 @@ if is_admin:
                 save_book(row)
                 st.success(f"✅ Book '{name}' added successfully!")
             else:
-                st.error("Book Name and Author are required.")
-else:
-    st.info("Login as admin to add books.")
+                st.error("❌ Book Name and Author are required.")
 
-# -------------------------------
-# Search + Filter Section
-# -------------------------------
-search = st.text_input("🔍 Search by Book Name or Author:")
-filtered = book_data.copy()
+# ----------------- SEARCH SECTION -----------------
+st.subheader("🔍 Search Library")
+search_query = st.text_input("Type book name or author")
 
-if search:
-    search_lower = search.lower()
+if search_query:
+    query = search_query.lower()
     filtered = book_data[
-        book_data['Name of Book'].str.lower().str.contains(search_lower, na=False) |
-        book_data['Author'].str.lower().str.contains(search_lower, na=False)
+        book_data['Name of Book'].str.lower().str.contains(query, na=False) |
+        book_data['Author'].str.lower().str.contains(query, na=False)
     ]
+    if not filtered.empty:
+        st.write(f"🔎 Found {len(filtered)} result(s)")
+        st.dataframe(filtered[DISPLAY_COLUMNS], use_container_width=True)
 
-# -------------------------------
-# Display Results
-# -------------------------------
-if not filtered.empty:
-    st.subheader("📖 Search Results")
-    st.dataframe(filtered[DISPLAY_COLUMNS], use_container_width=True)
-
-    selected = st.selectbox("📘 Select a book to view description", filtered['Name of Book'].dropna().unique())
-    desc = filtered.loc[filtered['Name of Book'].str.strip() == selected.strip(), 'Description'].values
-    st.markdown(f"### 📝 Description for *{selected}*")
-    st.write(desc[0] if len(desc) > 0 and pd.notna(desc[0]) else "No description available.")
-
-    # Download
-    csv = filtered[DISPLAY_COLUMNS].to_csv(index=False).encode('utf-8')
-    st.download_button("⬇️ Download Results as CSV", csv, "search_results.csv", "text/csv")
-else:
-    if search:
-        st.warning("❌ No matching books found.")
+        selected_book = st.selectbox("📘 Select a book to view description", filtered['Name of Book'].dropna().unique())
+        desc = filtered.loc[filtered['Name of Book'].str.strip() == selected_book.strip(), 'Description'].values
+        st.markdown(f"### 📝 Description for *{selected_book}*")
+        st.write(desc[0] if len(desc) > 0 and pd.notna(desc[0]) else "No description available.")
     else:
-        st.info("Type above to search your library.")
+        st.warning("❌ No matches found.")
+else:
+    st.info("Start typing to search for books.")
+
