@@ -21,25 +21,42 @@ def load_data():
         return pd.DataFrame()
 
 # ------------------------------------------
-# Streamlit App
+# Streamlit App Setup
 # ------------------------------------------
 st.set_page_config(page_title="📚 Yadu's Book Library", layout="wide")
 st.title("📚 Yadu's Book Library")
 
 book_data = load_data()
 
-# Columns to display
+# Drop "Sl No" if exists
+if 'Sl No' in book_data.columns:
+    book_data.drop(columns=['Sl No'], inplace=True)
+
+# Columns to display in table
 display_columns = [
     'Name of Book', 'Author', 'Language', 'N.o of Copies',
     'Date', 'BAR CODE', 'Available/Not', 'Checked Out By'
 ]
 
-# Remove unwanted columns like "Sl No"
-if 'Sl No' in book_data.columns:
-    book_data.drop(columns=['Sl No'], inplace=True)
+# ------------------------------------------
+# Admin Login
+# ------------------------------------------
+st.sidebar.header("🔐 Admin Login")
+with st.sidebar:
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    login = st.button("Login")
+
+is_admin = False
+if login:
+    if username == "admin" and password == "admin123":
+        st.sidebar.success("✅ Logged in as admin")
+        is_admin = True
+    else:
+        st.sidebar.error("❌ Invalid credentials")
 
 # ------------------------------------------
-# Live Substring Search (NOT fuzzy)
+# Book Search Section
 # ------------------------------------------
 query = st.text_input("🔍 Search by Book Name or Author:", placeholder="Type to search...")
 
@@ -71,3 +88,29 @@ else:
         st.warning("❌ No matches found.")
     else:
         st.info("Start typing above to search by Book Name or Author.")
+
+# ------------------------------------------
+# Admin Controls - Add New Book (just form, not connected to sheet yet)
+# ------------------------------------------
+if is_admin:
+    st.markdown("---")
+    st.subheader("➕ Add a New Book")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        new_name = st.text_input("Book Name")
+        new_author = st.text_input("Author")
+        new_lang = st.text_input("Language")
+        new_date = st.date_input("Date")
+    with col2:
+        new_copies = st.number_input("No. of Copies", min_value=1, value=1)
+        new_barcode = st.text_input("BAR CODE")
+        new_avail = st.selectbox("Available/Not", ["Available", "Not Available"])
+        new_user = st.text_input("Checked Out By (if any)")
+
+    new_desc = st.text_area("Description")
+
+    if st.button("✅ Add Book"):
+        st.success(f"📚 Book '{new_name}' added successfully (functionality placeholder only).")
+
+        # NOTE: To actually append to Google Sheet, you'd need gspread + service account setup
