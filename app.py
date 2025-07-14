@@ -4,9 +4,9 @@ import requests
 from io import StringIO
 from difflib import get_close_matches
 
-# -------------------------------
-# Google Sheet CSV Link
-# -------------------------------
+# ------------------------------------------
+# Google Sheet CSV Link (must be public)
+# ------------------------------------------
 GOOGLE_SHEET_CSV = "https://docs.google.com/spreadsheets/d/10foSwd8HyCbltVFYT5HpuiiQMk9FFIkn-aVhH93_A78/gviz/tq?tqx=out:csv"
 
 @st.cache_data(ttl=600)
@@ -18,59 +18,59 @@ def load_data():
         df = df[df['Name of Book'].notna()]
         return df
     except Exception as e:
-        st.error(f"⚠️ Failed to load book data: {e}")
+        st.error(f"⚠️ Failed to load data: {e}")
         return pd.DataFrame()
 
-# ---------------------------------
-# Main App Layout
-# ---------------------------------
+# ------------------------------------------
+# App Start
+# ------------------------------------------
 st.set_page_config(page_title="📚 Yadu's Book Library", layout="wide")
 st.title("📚 Yadu's Book Library")
 
 book_data = load_data()
 
-# Drop unwanted columns
-if 'Sl No' in book_data.columns:
-    book_data.drop(columns=['Sl No'], inplace=True)
+# Columns to show in the table
+display_columns = [
+    'Name of Book', 'Author', 'Language', 'N.o of Copies',
+    'Date', 'BAR CODE', 'Available/Not', 'Checked Out By'
+]
 
-# --------------------------
-# Search Input
-# --------------------------
-query = st.text_input("🔍 Search for Book or Author (live fuzzy):", placeholder="Start typing...")
+# Drop irrelevant columns (e.g., Sl No)
+for col in ['Sl No']:
+    if col in book_data.columns:
+        book_data.drop(columns=col, inplace=True)
+
+# ------------------------------------------
+# Live Fuzzy Search
+# ------------------------------------------
+query = st.text_input("🔍 Search by Book Name or Author:", placeholder="Start typing...")
 
 def fuzzy_filter(df, query):
     if not query:
         return pd.DataFrame()
 
-    # Combine Book Name and Author for matching
     combined = df['Name of Book'].astype(str) + " " + df['Author'].astype(str)
-    matches = get_close_matches(query, combined, n=10, cutoff=0.4)  # fuzzy match threshold
-
-    # Filter matching rows
+    matches = get_close_matches(query, combined, n=15, cutoff=0.4)
     return df[combined.isin(matches)]
 
-# Filtered results
 filtered = fuzzy_filter(book_data, query)
 
 if not filtered.empty:
-    st.success(f"🔍 {len(filtered)} match(es) found.")
+    st.success(f"🔎 {len(filtered)} match(es) found.")
 
-    # Display only selected columns (hide Description)
-    display_cols = ['Name of Book', 'Author', 'Language']
-    show_df = filtered[display_cols] if all(col in filtered.columns for col in display_cols) else filtered
-    st.dataframe(show_df, use_container_width=True)
+    # Show only the required columns
+    available_cols = [col for col in display_columns if col in filtered.columns]
+    st.dataframe(filtered[available_cols], use_container_width=True)
 
-    # Select book to view description
-    selected = st.selectbox("📘 Select a book to view details", filtered['Name of Book'].dropna().unique())
+    # Select a book to show its description
+    selected_book = st.selectbox("📘 Select a book to view description", filtered['Name of Book'].dropna().unique())
 
-    if selected:
-        row = filtered[filtered['Name of Book'].str.strip() == selected.strip()]
-        if not row.empty and 'Description' in row.columns:
-            desc = row.iloc[0]['Description']
-            st.markdown(f"### 📝 Description for *{selected}*")
-            st.write(desc if pd.notna(desc) and str(desc).strip() else "No description available.")
+    if selected_book and 'Description' in filtered.columns:
+        desc = filtered.loc[filtered['Name of Book'].str.strip() == selected_book.strip(), 'Description'].values
+        st.markdown(f"### 📝 Description for *{selected_book}*")
+        st.write(desc[0] if len(desc) > 0 and pd.notna(desc[0]) else "No description available.")
 else:
     if query:
         st.warning("❌ No close matches found.")
     else:
-        st.info("Start typing to search by Book Name or Author.")
+        st.info("Start typing to search the book library.")
