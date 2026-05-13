@@ -550,7 +550,7 @@ st.markdown("""
 if not book_data.empty:
     total_books = len(book_data)
     avail_col = 'Available/Not'
-    available = book_data[book_data[avail_col].str.lower().str.contains('available', na=False)].shape[0] if avail_col in book_data.columns else "—"
+    available = book_data[book_data[avail_col].astype(str).str.lower().str.contains('available', na=False)].shape[0] if avail_col in book_data.columns else "—"
     languages = book_data['Language'].nunique() if 'Language' in book_data.columns else "—"
     authors = book_data['Author'].nunique() if 'Author' in book_data.columns else "—"
 
