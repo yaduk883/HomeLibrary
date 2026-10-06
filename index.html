@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yadu's Library</title>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1e1e1e;--panel:#252526;--line:#3c3c3c;--fg:#d4d4d4;--com:#6a9955;--kw:#569cd6;--str:#ce9178;--fn:#dcdcaa;--type:#4ec9b0;--num:#b5cea8;--pur:#c586c0;--err:#f44747}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.6 'Fira Code',Consolas,'Courier New',monospace;padding:1.5rem;max-width:1100px;margin:0 auto}
+.bar{background:var(--panel);border:1px solid var(--line);border-bottom:0;padding:.4rem .8rem;color:#858585;font-size:12px;display:flex;gap:.5rem;align-items:center}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.box{border:1px solid var(--line);padding:1rem;margin-bottom:1.5rem}
+.com{color:var(--com)}.kw{color:var(--kw)}.str{color:var(--str)}.fn{color:var(--fn)}.type{color:var(--type)}.num{color:var(--num)}.pur{color:var(--pur)}.err{color:var(--err)}
+.row{display:flex;align-items:center;gap:.6rem}
+input,select,textarea{background:var(--bg);color:var(--str);border:1px solid var(--line);font:inherit;padding:.4rem .6rem;width:100%;caret-color:var(--fg)}
+input:focus,select:focus,textarea:focus{outline:1px solid var(--kw);border-color:var(--kw)}
+::placeholder{color:#6a6a6a}
+#q{border:0;border-bottom:1px solid var(--line);background:transparent}
+button{background:var(--kw);color:#1e1e1e;border:0;font:inherit;font-weight:500;padding:.4rem 1rem;cursor:pointer;margin-top:.6rem}
+button:hover{background:#6fb0ea}
+.tbl{overflow-x:auto;margin-top:.8rem}
+table{border-collapse:collapse;width:100%;white-space:nowrap}
+th{color:var(--type);text-align:left;font-weight:500;padding:.3rem 1rem .3rem 0;border-bottom:1px solid var(--line)}
+td{padding:.3rem 1rem .3rem 0;color:var(--str)}
+td.n{color:var(--num)}
+tbody tr:hover{background:var(--panel)}
+.desc{border-left:2px solid var(--kw);padding:.3rem 1rem;margin-top:.8rem;background:var(--panel)}
+label{display:block;color:var(--kw);margin:.7rem 0 .2rem}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 1.5rem}
+.hidden{display:none}
+.cur:after{content:'█';animation:b 1s steps(1) infinite;color:var(--fg)}
+@keyframes b{50%{opacity:0}}
+@media(max-width:700px){.grid{grid-template-columns:1fr}body{padding:.7rem}}
+@media(prefers-reduced-motion:reduce){.cur:after{animation:none}}
+</style>
+</head>
+<body>
+<div class="bar"><span class="dot" style="background:#f44747"></span><span class="dot" style="background:#dcdcaa"></span><span class="dot" style="background:#6a9955"></span>&nbsp;library.py</div>
+<div class="box">
+  <div class="com"># Yadu's Library - personal book catalogue</div>
+  <div><span class="kw">import</span> <span class="type">library</span> <span class="kw">as</span> lib</div>
+  <div id="stats" class="com">loading data...</div>
+</div>
+
+<div class="box">
+  <div class="row"><span class="pur">&gt;&gt;&gt;</span><span class="fn">search</span>(<input id="q" placeholder='"title or author"' autofocus>)</div>
+  <div id="results"></div>
+</div>
+
+<div class="box">
+  <div class="com"># admin</div>
+  <div class="grid">
+    <div><label for="u">username</label><input id="u" autocomplete="off"></div>
+    <div><label for="p">password</label><input id="p" type="password"></div>
+  </div>
+  <button id="login">login()</button>
+  <span id="loginMsg"></span>
+
+  <div id="admin" class="hidden">
+    <div class="com" style="margin-top:1.2rem"># add a new title (copies a row to paste into the Google Sheet)</div>
+    <div class="grid">
+      <div><label>name</label><input id="an"><label>author</label><input id="aa"><label>language</label><input id="al"><label>date</label><input id="ad" type="date"></div>
+      <div><label>copies</label><input id="ac" type="number" min="1" value="1"><label>barcode</label><input id="ab"><label>status</label><select id="av"><option>Available</option><option>Not Available</option></select><label>checked_out_by</label><input id="au"></div>
+    </div>
+    <label>description</label><textarea id="adesc" rows="3"></textarea>
+    <button id="add">add_book()</button>
+    <span id="addMsg"></span>
+  </div>
+</div>
+
+<script>
+const SHEET_CSV = "https://docs.google.com/spreadsheets/d/10foSwd8HyCbltVFYT5HpuiiQMk9FFIkn-aVhH93_A78/gviz/tq?tqx=out:csv";
+const COLS = ['Name of Book','Author','Language','N.o of Copies','Date','BAR CODE','Available/Not','Checked Out By'];
+let books = [];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function parseCSV(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"' && text[i+1] === '"') { cell += '"'; i++; }
+      else if (c === '"') q = false;
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i+1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+async function load() {
+  try {
+    const res = await fetch(SHEET_CSV);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const rows = parseCSV(await res.text());
+    const head = rows[0].map(h => h.trim());
+    books = rows.slice(1)
+      .map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] || '').trim()])))
+      .filter(b => b['Name of Book']);
+    const uniq = k => new Set(books.map(b => b[k]).filter(Boolean)).size;
+    const avail = books.filter(b => (b['Available/Not'] || '').toLowerCase().includes('available')).length;
+    $('stats').innerHTML = `titles = <span class="num">${books.length}</span> &nbsp; available = <span class="num">${avail}</span> &nbsp; authors = <span class="num">${uniq('Author')}</span> &nbsp; languages = <span class="num">${uniq('Language')}</span>`;
+    $('stats').className = '';
+    search();
+  } catch (e) {
+    $('stats').innerHTML = '<span class="err">Error: could not load book data (' + esc(e.message) + ')</span>';
+  }
+}
+
+function search() {
+  const raw = $('q').value.trim(), q = raw.toLowerCase(), out = $('results');
+  if (!q) { out.innerHTML = '<div class="com"># type a title or author above<span class="cur"></span></div>'; return; }
+  const hits = books.filter(b => (b['Name of Book'] + ' ' + (b['Author'] || '')).toLowerCase().includes(q));
+  if (!hits.length) { out.innerHTML = `<div class="err">NotFound: no titles matching "${esc(raw)}"</div>`; return; }
+  const cols = COLS.filter(c => c in hits[0]);
+  const titles = [...new Set(hits.map(b => b['Name of Book']))];
+  out.innerHTML = `<div class="com"># ${hits.length} result${hits.length !== 1 ? 's' : ''} found</div>
+    <div class="tbl"><table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+    <tbody>${hits.map(b => `<tr>${cols.map(c => `<td class="${/Copies/.test(c) ? 'n' : ''}">${esc(b[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <label>describe</label><select id="pick">${titles.map(t => `<option>${esc(t)}</option>`).join('')}</select>
+    <div id="descBox"></div>`;
+  const show = () => {
+    const t = $('pick').value, b = hits.find(x => x['Name of Book'] === t);
+    $('descBox').innerHTML = `<div class="desc"><div class="type">${esc(t)}</div><div>${esc(b && b['Description'] || 'No description available for this title.')}</div></div>`;
+  };
+  $('pick').onchange = show; show();
+}
+$('q').addEventListener('input', search);
+
+// NOTE: this check runs in the browser, so the password is visible in the page source.
+$('login').onclick = () => {
+  const ok = $('u').value === 'admin' && $('p').value === 'admin123';
+  $('loginMsg').innerHTML = ok ? ' <span class="com">&nbsp;# access granted</span>' : ' <span class="err">&nbsp;# invalid credentials</span>';
+  $('admin').classList.toggle('hidden', !ok);
+};
+
+$('add').onclick = () => {
+  const name = $('an').value.trim(), m = $('addMsg');
+  if (!name) { m.innerHTML = ' <span class="err">&nbsp;# enter a book name first</span>'; return; }
+  const row = [name,$('aa').value,$('al').value,$('ac').value,$('ad').value,$('ab').value,$('av').value,$('au').value,$('adesc').value].join('\t');
+  navigator.clipboard.writeText(row).then(
+    () => m.innerHTML = ` <span class="com">&nbsp;# row copied - paste it into the next empty row of the sheet</span>`,
+    () => m.innerHTML = ' <span class="err">&nbsp;# copy failed - allow clipboard access</span>');
+};
+
+load(); search();
+</script>
+</body>
+</html>
